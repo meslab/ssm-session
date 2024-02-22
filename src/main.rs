@@ -1,31 +1,28 @@
 use clap::Parser;
-
-use log::{debug, info};
-use std::{collections::HashMap, str::FromStr};
+use log::debug;
+//use std::{collections::HashMap, str::FromStr};
+use aws_config::default_provider::credentials::DefaultCredentialsChain;
+use aws_sdk_ecs::config::Region as EcsRegion;
+use aws_sdk_ecs::{Client as EcsClient, Config as EcsConfig};
 use tokio;
 
-use aws_sdk_ecs::model::{
-    DescribeContainerInstancesRequest, DescribeTasksRequest, ListServicesRequest, ListTasksRequest,
-};
-use aws_sdk_ecs::{Client as EcsClient, Config as EcsConfig};
-use aws_sdk_ssm::model::StartSessionRequest;
-use aws_sdk_ssm::{Client as SsmClient, Config as SsmConfig};
+//use aws_sdk_ssm::Client as SsmClient;
 
-#[derive(Parcer)]
+#[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[clap(
-    version = "1.0",
-    author = "Your Name",
-    about = "Starts a session on an ECS service instance"
+    version = "v0.0.1",
+    author = "Anton Sidorov tonysidrock@gmail.com",
+    about = "Counts wwords frequency in a text file"
 )]
 struct Args {
-    #[clap(short, long, value_name = "SERVICE", about = "Sets the service name")]
+    #[clap(short, long, default_value = "auth")]
     service: String,
 
-    #[clap(short, long, value_name = "CLUSTER", about = "Sets the cluster name")]
+    #[clap(short, long, default_value = "app")]
     cluster: String,
 
-    #[clap(short, long, value_name = "REGION", about = "Sets the region")]
+    #[clap(short, long, default_value = "eu-central-1")]
     region: String,
 }
 
@@ -35,93 +32,85 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
-    let service = args.service;
-    let cluster = args.cluster;
-    let region = args.region;
+    //let service = &args.service;
+    let cluster = &args.cluster;
+    let region = EcsRegion::new(args.region);
 
-    let ecs_config = EcsConfig::builder().region(region.to_string()).build();
+    let credentials_provider = DefaultCredentialsChain::builder()
+        .region(region.clone())
+        .build()
+        .await;
+    let ecs_config = EcsConfig::builder()
+        .credentials_provider(credentials_provider)
+        .region(region.clone())
+        .build();
     let ecs_client = EcsClient::from_conf(ecs_config);
 
-    let ssm_config = SsmConfig::builder().region(region.to_string()).build();
-    let ssm_client = SsmClient::from_conf(ssm_config);
+    let list_services_result = ecs_client
+        .list_services()
+        .cluster(cluster.clone())
+        .max_results(100)
+        .send()
+        .await;
+    debug!("List services result: {:?}", list_services_result);
 
-    let mut list_services_request = ListServicesRequest::default();
-    list_services_request.cluster = Some(cluster.clone());
-    list_services_request.max_results = Some(100);
+    let services = list_services_result.unwrap().service_arns.unwrap();
 
-    let mut list_services_result = ecs_client
-        .list_services(list_services_request.clone())
-        .await?;
-    let mut services = list_services_result.service_arns.unwrap_or_default();
+    debug!("Services: {:?}", services);
 
-    while let Some(next_token) = list_services_result.next_token {
-        list_services_request.next_token = Some(next_token.clone());
-        list_services_result = ecs_client
-            .list_services(list_services_request.clone())
-            .await?;
-        services.extend(list_services_result.service_arns.unwrap_or_default());
-    }
+    // let ssm_config = SsmConfig::builder()
+    //     .behavior_version(behavior_version)
+    //     .region(region.clone())
+    //     .build();
+    // let ssm_client = SsmClient::from_conf(ssm_config);
 
-    debug!("List services result: {:?}", services);
-
-    if let Some(service_arn) = services.into_iter().find(|arn| arn.contains(&service)) {
-        info!("Service ARN: {:?}", service_arn);
-
-        let list_tasks_request = ListTasksRequest {
-            cluster: Some(cluster.clone()),
-            service_name: Some(service_arn.clone()),
-            ..Default::default()
-        };
-
-        if let Some(task_arn) = ecs_client
-            .list_tasks(list_tasks_request)
-            .await?
-            .task_arns
-            .and_then(|mut arns| arns.pop())
-        {
-            let describe_tasks_request = DescribeTasksRequest {
-                cluster: Some(cluster.clone()),
-                tasks: vec![task_arn.clone()],
-                ..Default::default()
-            };
-
-            if let Some(container_instance_arn) = ecs_client
-                .describe_tasks(describe_tasks_request)
-                .await?
-                .tasks
-                .and_then(|mut tasks| tasks.pop())
-                .map(|task| task.container_instance_arn)
-            {
-                let describe_container_instances_request = DescribeContainerInstancesRequest {
-                    cluster: Some(cluster.clone()),
-                    container_instances: vec![container_instance_arn.clone().expect("REASON")],
-                    ..Default::default()
-                };
-
-                if let Some(instance_id) = ecs_client
-                    .describe_container_instances(describe_container_instances_request)
-                    .await?
-                    .container_instances
-                    .and_then(|mut instances| instances.pop())
-                    .map(|instance| instance.ec_2_instance_id)
-                {
-                    let mut params = HashMap::new();
-                    params.insert("command".to_string(), vec!["sudo su".to_string()]);
-
-                    let start_session_request = StartSessionRequest {
-                        target: instance_id.expect("REASON"),
-                        document_name: Some("AWS-StartInteractiveCommand".to_string()),
-                        parameters: Some(params),
-                        ..Default::default()
-                    };
-
-                    info!("Start session request: {:?}", start_session_request);
-                    info!("Starting session on {}", instance_id.expect("REASON"));
-                    ssm_client.start_session(start_session_request);
-                }
-            }
-        }
-    }
-
+    //    if let Some(service_arn) = services.into_iter().find(|arn| arn.contains(&service)) {
+    //        info!("Service ARN: {:?}", service_arn);
+    //
+    //        let list_tasks_request = ListTasksRequest {
+    //            cluster: Some(cluster.clone()),
+    //            service_name: Some(service_arn.clone()),
+    //            ..Default::default()
+    //        };
+    //
+    //        let list_tasks_result = ecs_client.list_tasks(list_tasks_request).await?;
+    //
+    //        if let Some(task_arn) = list_tasks_result.task_arns.and_then(|mut arns| arns.pop()) {
+    //            let describe_tasks_request = DescribeTasksRequest {
+    //                cluster: Some(cluster.clone()),
+    //                tasks: vec![task_arn.clone()],
+    //                ..Default::default()
+    //            };
+    //
+    //            let describe_tasks_result = ecs_client.describe_tasks(describe_tasks_request).await?;
+    //
+    //            if let Some(container_instance_arn) = describe_tasks_result.tasks.and_then(|mut tasks| tasks.pop()).map(|task| task.container_instance_arn) {
+    //                let describe_container_instances_request = DescribeContainerInstancesRequest {
+    //                    cluster: Some(cluster.clone()),
+    //                    container_instances: vec![container_instance_arn.clone().expect("REASON")],
+    //                    ..Default::default()
+    //                };
+    //
+    //                let describe_container_instances_result = ecs_client.describe_container_instances(describe_container_instances_request).await?;
+    //
+    //                if let Some(instance_id) = describe_container_instances_result.container_instances.and_then(|mut instances| instances.pop()).map(|instance| instance.ec_2_instance_id) {
+    //                    let mut params = HashMap::new();
+    //                    params.insert("command".to_string(), vec!["sudo su".to_string()]);
+    //
+    //                    let start_session_request = StartSessionRequest {
+    //                        target: instance_id.expect("REASON"),
+    //                        document_name: Some("AWS-StartInteractiveCommand".to_string()),
+    //                        parameters: Some(params),
+    //                        ..Default::default()
+    //                    };
+    //
+    //                    info!("Start session request: {:?}", start_session_request);
+    //                    info!("Starting session on {}", instance_id.expect("REASON"));
+    //                    ssm_client.start_session();
+    //                }
+    //            }
+    //        }
+    //    }
+    //
     Ok(())
 }
