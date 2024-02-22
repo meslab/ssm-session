@@ -55,8 +55,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!("List services result: {:?}", list_services_result);
 
     let services = list_services_result.unwrap().service_arns.unwrap();
-
     debug!("Services: {:?}", services);
+
+    let service_arn = services
+        .into_iter()
+        .find(|arn| arn.contains(&args.service))
+        .unwrap();
+    debug!("Service ARN: {:?}", service_arn);
 
     // let ssm_config = SsmConfig::builder()
     //     .behavior_version(behavior_version)
