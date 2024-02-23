@@ -1,6 +1,5 @@
 use clap::Parser;
 use log::debug;
-//use std::{collections::HashMap, str::FromStr};
 use aws_config::default_provider::credentials::DefaultCredentialsChain;
 use aws_sdk_ecs::config::Region as EcsRegion;
 use aws_sdk_ecs::{Client as EcsClient, Config as EcsConfig};
@@ -46,21 +45,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
     let ecs_client = EcsClient::from_conf(ecs_config);
 
-    let list_services_result = ecs_client
-        .list_services()
-        .cluster(cluster.clone())
-        .max_results(100)
-        .send()
-        .await;
-    debug!("List services result: {:?}", list_services_result);
+    let mut next_token = None::<String>;
+    let mut service_arn = None;
 
-    let services = list_services_result.unwrap().service_arns.unwrap();
-    debug!("Services: {:?}", services);
+    while service_arn.is_none() {
+        let list_services_result = ecs_client
+            .list_services()
+            .cluster(cluster.clone())
+            .max_results(100)
+            .next_token(next_token)
+            .send()
+            .await?;
+        debug!("List services result: {:?}", list_services_result);
 
-    let service_arn = services
-        .into_iter()
-        .find(|arn| arn.contains(&args.service))
-        .unwrap();
+        let services = list_services_result.service_arns.unwrap();
+        debug!("Services: {:?}", services);
+
+        service_arn = services.into_iter().find(|arn| arn.contains(&args.service));
+
+        next_token = Some(list_services_result.next_token.expect("REASON"));
+    }
+
+    let service_arn = service_arn.unwrap();
     debug!("Service ARN: {:?}", service_arn);
 
     // let ssm_config = SsmConfig::builder()
