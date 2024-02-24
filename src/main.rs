@@ -1,8 +1,8 @@
-use clap::Parser;
-use log::debug;
 use aws_config::default_provider::credentials::DefaultCredentialsChain;
 use aws_sdk_ecs::config::Region as EcsRegion;
 use aws_sdk_ecs::{Client as EcsClient, Config as EcsConfig};
+use clap::Parser;
+use log::debug;
 use tokio;
 
 //use aws_sdk_ssm::Client as SsmClient;
@@ -31,8 +31,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
-    //let service = &args.service;
-    let cluster = &args.cluster;
     let region = EcsRegion::new(args.region);
 
     let credentials_provider = DefaultCredentialsChain::builder()
@@ -43,31 +41,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .credentials_provider(credentials_provider)
         .region(region.clone())
         .build();
+
     let ecs_client = EcsClient::from_conf(ecs_config);
+    let mut ecs_services_stream = ecs_client
+        .list_services()
+        .cluster(&args.cluster)
+        .max_results(2)
+        .into_paginator()
+        .send();
 
-    let mut next_token = None::<String>;
-    let mut service_arn = None;
-
-    while service_arn.is_none() {
-        let list_services_result = ecs_client
-            .list_services()
-            .cluster(cluster.clone())
-            .max_results(100)
-            .next_token(next_token)
-            .send()
-            .await?;
-        debug!("List services result: {:?}", list_services_result);
-
-        let services = list_services_result.service_arns.unwrap();
-        debug!("Services: {:?}", services);
-
-        service_arn = services.into_iter().find(|arn| arn.contains(&args.service));
-
-        next_token = Some(list_services_result.next_token.expect("REASON"));
+    while let Some(services) = ecs_services_stream.next().await {
+        let service_arn = services.unwrap()
+            .service_arns
+            .into_iter()
+            .find(|arn| arn.contains(&args.service));
+        if let Some(service_arn) = service_arn {
+            debug!("Service ARN: {:?}", service_arn);
+            break;
+        }
     }
 
-    let service_arn = service_arn.unwrap();
-    debug!("Service ARN: {:?}", service_arn);
+    //while service_arn.is_none() {
+    //    let list_services_result = ecs_client
+    //        .list_services()
+    //        .cluster(cluster.clone())
+    //        .max_results(2)
+    //        .send()
+    //        .await?;
+    //    debug!("List services result: {:?}", list_services_result);
+    //
+    //    let services = list_services_result.service_arns.unwrap();
+    //    debug!("Services: {:?}", services);
+    //
+    //    service_arn = services.into_iter().find(|arn| arn.contains(&args.service));
+    //
+    //    next_token = Some(list_services_result.next_token.expect("REASON"));
+    //}
+    //
+    //let service_arn = service_arn.unwrap();
+    //debug!("Service ARN: {:?}", service_arn);
 
     // let ssm_config = SsmConfig::builder()
     //     .behavior_version(behavior_version)
