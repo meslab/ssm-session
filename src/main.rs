@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut ecs_services_stream = ecs_client
         .list_services()
         .cluster(&args.cluster)
-        .max_results(2)
+        .max_results(100)
         .into_paginator()
         .send();
 
@@ -68,26 +68,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
     }
-
-    //while service_arn.is_none() {
-    //    let list_services_result = ecs_client
-    //        .list_services()
-    //        .cluster(cluster.clone())
-    //        .max_results(2)
-    //        .send()
-    //        .await?;
-    //    debug!("List services result: {:?}", list_services_result);
-    //
-    //    let services = list_services_result.service_arns.unwrap();
-    //    debug!("Services: {:?}", services);
-    //
-    //    service_arn = services.into_iter().find(|arn| arn.contains(&args.service));
-    //
-    //    next_token = Some(list_services_result.next_token.expect("REASON"));
-    //}
-    //
-    //let service_arn = service_arn.unwrap();
-    //debug!("Service ARN: {:?}", service_arn);
 
     // let ssm_config = SsmConfig::builder()
     //     .behavior_version(behavior_version)
