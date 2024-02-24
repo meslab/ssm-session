@@ -5,8 +5,6 @@ use clap::Parser;
 use log::{debug, info};
 use tokio;
 
-//use aws_sdk_ssm::Client as SsmClient;
-
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[clap(
@@ -23,6 +21,48 @@ struct Args {
 
     #[clap(short, long, default_value = "eu-central-1")]
     region: String,
+}
+
+async fn get_service_arn(
+    ecs_client: &EcsClient,
+    cluster: &String,
+    service: &String,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut ecs_services_stream = ecs_client
+        .list_services()
+        .cluster(cluster)
+        .max_results(100)
+        .into_paginator()
+        .send();
+
+    while let Some(services) = ecs_services_stream.next().await {
+        debug!("Services: {:?}", services);
+        let service_arn = services
+            .unwrap()
+            .service_arns
+            .unwrap()
+            .into_iter()
+            .find(|arn| arn.contains(service));
+        if let Some(service_arn) = service_arn {
+            debug!("Inside get_service_arn Service ARN: {:?}", service_arn);
+            return Ok(service_arn);
+        }
+    }
+    Err("Service not found".into())
+}
+
+async fn get_task_arn(
+    ecs_client: &EcsClient,
+    cluster: &String,
+    service: &String,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let list_tasks_result = ecs_client
+        .list_tasks()
+        .cluster(cluster)
+        .service_name(service)
+        .send()
+        .await?;
+    Ok(list_tasks_result.task_arns.unwrap().pop().unwrap())
 }
 
 #[tokio::main]
@@ -48,32 +88,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let ecs_client = EcsClient::from_conf(ecs_config);
-    let mut ecs_services_stream = ecs_client
-        .list_services()
-        .cluster(&args.cluster)
-        .max_results(100)
-        .into_paginator()
-        .send();
+    let service_arn = get_service_arn(&ecs_client, &args.cluster, &args.service).await?;
 
-    while let Some(services) = ecs_services_stream.next().await {
-        debug!("Services: {:?}", services);
-        let service_arn = services
-            .unwrap()
-            .service_arns
-            .unwrap()
-            .into_iter()
-            .find(|arn| arn.contains(&args.service));
-        if let Some(service_arn) = service_arn {
-            info!("Service ARN: {:?}", service_arn);
-            break;
-        }
-    }
+    info!("Service ARN: {}", service_arn);
 
-    // let ssm_config = SsmConfig::builder()
-    //     .behavior_version(behavior_version)
-    //     .region(region.clone())
-    //     .build();
-    // let ssm_client = SsmClient::from_conf(ssm_config);
+    let task_arn = get_task_arn(&ecs_client, &args.cluster, &service_arn).await?;
+
+    info!("Task ARN: {}", task_arn);
 
     //    if let Some(service_arn) = services.into_iter().find(|arn| arn.contains(&service)) {
     //        info!("Service ARN: {:?}", service_arn);
