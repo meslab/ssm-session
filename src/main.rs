@@ -2,7 +2,7 @@ use aws_config::default_provider::credentials::DefaultCredentialsChain;
 use aws_sdk_ecs::config::Region as EcsRegion;
 use aws_sdk_ecs::{Client as EcsClient, Config as EcsConfig};
 use clap::Parser;
-use log::debug;
+use log::{debug, info};
 use tokio;
 
 //use aws_sdk_ssm::Client as SsmClient;
@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
-    let region = EcsRegion::new(args.region);
+    let region = EcsRegion::new(args.region.clone());
 
     let credentials_provider = DefaultCredentialsChain::builder()
         .region(region.clone())
@@ -42,6 +42,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .region(region.clone())
         .build();
 
+    debug!(
+        "Cluster: {}, Service: {}, Region: {}.",
+        &args.cluster, &args.service, &args.region
+    );
+
     let ecs_client = EcsClient::from_conf(ecs_config);
     let mut ecs_services_stream = ecs_client
         .list_services()
@@ -51,12 +56,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send();
 
     while let Some(services) = ecs_services_stream.next().await {
-        let service_arn = services.unwrap()
+        debug!("Services: {:?}", services);
+        let service_arn = services
+            .unwrap()
             .service_arns
+            .unwrap()
             .into_iter()
             .find(|arn| arn.contains(&args.service));
         if let Some(service_arn) = service_arn {
-            debug!("Service ARN: {:?}", service_arn);
+            info!("Service ARN: {:?}", service_arn);
             break;
         }
     }
