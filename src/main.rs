@@ -4,6 +4,7 @@ use aws_sdk_ecs::{Client as EcsClient, Config as EcsConfig};
 use clap::Parser;
 use log::{debug, info};
 use tokio;
+use std::process::Command;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -65,6 +66,46 @@ async fn get_task_arn(
     Ok(list_tasks_result.task_arns.unwrap().pop().unwrap())
 }
 
+async fn get_task_container_arn(
+    ecs_client: &EcsClient,
+    cluster: &String,
+    task_arn: &String,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let describe_tasks_result = ecs_client
+        .describe_tasks()
+        .cluster(cluster)
+        .tasks(task_arn)
+        .send()
+        .await?;
+    Ok(describe_tasks_result
+        .tasks
+        .expect("No task found!")
+        .pop()
+        .unwrap()
+        .container_instance_arn
+        .expect("No container instance found!"))
+}
+
+async fn get_container_arn(
+    ecs_client: &EcsClient,
+    cluster: &String,
+    container_instance_arn: &String,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let describe_container_instances_result = ecs_client
+        .describe_container_instances()
+        .cluster(cluster)
+        .container_instances(container_instance_arn)
+        .send()
+        .await?;
+    Ok(describe_container_instances_result
+        .container_instances
+        .expect("No container instance found!")
+        .pop()
+        .unwrap()
+        .ec2_instance_id
+        .expect("No EC2 instance found!"))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -96,53 +137,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Task ARN: {}", task_arn);
 
-    //    if let Some(service_arn) = services.into_iter().find(|arn| arn.contains(&service)) {
-    //        info!("Service ARN: {:?}", service_arn);
-    //
-    //        let list_tasks_request = ListTasksRequest {
-    //            cluster: Some(cluster.clone()),
-    //            service_name: Some(service_arn.clone()),
-    //            ..Default::default()
-    //        };
-    //
-    //        let list_tasks_result = ecs_client.list_tasks(list_tasks_request).await?;
-    //
-    //        if let Some(task_arn) = list_tasks_result.task_arns.and_then(|mut arns| arns.pop()) {
-    //            let describe_tasks_request = DescribeTasksRequest {
-    //                cluster: Some(cluster.clone()),
-    //                tasks: vec![task_arn.clone()],
-    //                ..Default::default()
-    //            };
-    //
-    //            let describe_tasks_result = ecs_client.describe_tasks(describe_tasks_request).await?;
-    //
-    //            if let Some(container_instance_arn) = describe_tasks_result.tasks.and_then(|mut tasks| tasks.pop()).map(|task| task.container_instance_arn) {
-    //                let describe_container_instances_request = DescribeContainerInstancesRequest {
-    //                    cluster: Some(cluster.clone()),
-    //                    container_instances: vec![container_instance_arn.clone().expect("REASON")],
-    //                    ..Default::default()
-    //                };
-    //
-    //                let describe_container_instances_result = ecs_client.describe_container_instances(describe_container_instances_request).await?;
-    //
-    //                if let Some(instance_id) = describe_container_instances_result.container_instances.and_then(|mut instances| instances.pop()).map(|instance| instance.ec_2_instance_id) {
-    //                    let mut params = HashMap::new();
-    //                    params.insert("command".to_string(), vec!["sudo su".to_string()]);
-    //
-    //                    let start_session_request = StartSessionRequest {
-    //                        target: instance_id.expect("REASON"),
-    //                        document_name: Some("AWS-StartInteractiveCommand".to_string()),
-    //                        parameters: Some(params),
-    //                        ..Default::default()
-    //                    };
-    //
-    //                    info!("Start session request: {:?}", start_session_request);
-    //                    info!("Starting session on {}", instance_id.expect("REASON"));
-    //                    ssm_client.start_session();
-    //                }
-    //            }
-    //        }
-    //    }
-    //
+    let task_instance_arn = get_task_container_arn(&ecs_client, &args.cluster, &task_arn).await?;
+    info!("Task Instance ARN: {:?}", task_instance_arn);
+
+    let instance_id = get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?;
+    info!("Instance ID: {:?}", instance_id);
+
+    println!(
+        "Service {} is running on instance {}",
+        &args.service, instance_id
+    );
+
+    let mut ssm_session = Command::new("aws")
+        .arg("ssm")
+        .arg("start-session")
+        .arg("--target")
+        .arg(instance_id)
+        .spawn()
+        .expect("Failed to start ssm session");
+
+    let _ = ssm_session.wait().expect("Failed to wait for ssm session");
+
     Ok(())
 }
