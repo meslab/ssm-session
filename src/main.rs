@@ -3,8 +3,8 @@ use aws_sdk_ecs::config::Region as EcsRegion;
 use aws_sdk_ecs::{Client as EcsClient, Config as EcsConfig};
 use clap::Parser;
 use log::{debug, info};
-use tokio;
 use std::process::Command;
+use tokio;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -22,6 +22,12 @@ struct Args {
 
     #[clap(short, long, default_value = "eu-central-1")]
     region: String,
+
+    #[clap(short, long)]
+    exec: Option<String>,
+
+    #[clap(short, long)]
+    instance: Option<String>,
 }
 
 async fn get_service_arn(
@@ -128,20 +134,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &args.cluster, &args.service, &args.region
     );
 
+    let mut command = format!(
+        "command=sudo docker exec -ti $(sudo docker ps -qf name={} | head -n1) /bin/bash",
+        &args.service
+    );
+
+    if let Some(exec) = args.exec {
+        command = format!(
+            "command=sudo docker exec -ti $(sudo docker ps -qf name={} | head -n1) /bin/bash -lc {}",
+            &args.service, exec
+        );
+    }
+
     let ecs_client = EcsClient::from_conf(ecs_config);
-    let service_arn = get_service_arn(&ecs_client, &args.cluster, &args.service).await?;
+    let instance_id;
 
-    info!("Service ARN: {}", service_arn);
+    match args.instance {
+        Some(instance) => {
+            command = format!("command=sudo su -");
+            instance_id = instance;
+        }
+        None => {
+            let service_arn = get_service_arn(&ecs_client, &args.cluster, &args.service).await?;
 
-    let task_arn = get_task_arn(&ecs_client, &args.cluster, &service_arn).await?;
+            info!("Service ARN: {}", service_arn);
 
-    info!("Task ARN: {}", task_arn);
+            let task_arn = get_task_arn(&ecs_client, &args.cluster, &service_arn).await?;
 
-    let task_instance_arn = get_task_container_arn(&ecs_client, &args.cluster, &task_arn).await?;
-    info!("Task Instance ARN: {:?}", task_instance_arn);
+            info!("Task ARN: {}", task_arn);
 
-    let instance_id = get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?;
-    info!("Instance ID: {:?}", instance_id);
+            let task_instance_arn =
+                get_task_container_arn(&ecs_client, &args.cluster, &task_arn).await?;
+            info!("Task Instance ARN: {:?}", task_instance_arn);
+
+            instance_id = get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?;
+            info!("Instance ID: {:?}", instance_id);
+        }
+    }
 
     println!(
         "Service {} is running on instance {}",
@@ -153,6 +182,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg("start-session")
         .arg("--target")
         .arg(instance_id)
+        .arg("--document-name")
+        .arg("AWS-StartInteractiveCommand")
+        .arg("--parameters")
+        .arg(command)
         .spawn()
         .expect("Failed to start ssm session");
 
