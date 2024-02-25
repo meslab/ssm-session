@@ -22,9 +22,11 @@ release:
 	strip target/release/ssm-session
 
 install: release
+	cp target/release/ssm-session ~/.local/bin
 
 clean:
 	cargo clean
 	rm -rf target
 
 uninstall: clean
+	rm -f ~/.local/bin/ssm-session
