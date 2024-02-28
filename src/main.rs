@@ -9,7 +9,7 @@ use tokio;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[clap(
-    version = "v0.0.1",
+    version = "v0.0.2",
     author = "Anton Sidorov tonysidrock@gmail.com",
     about = "Counts wwords frequency in a text file"
 )]
@@ -180,6 +180,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut ssm_session = Command::new("aws")
         .arg("ssm")
         .arg("start-session")
+        .arg("--region")
+        .arg(&args.region)
         .arg("--target")
         .arg(instance_id)
         .arg("--document-name")
