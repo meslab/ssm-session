@@ -92,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg("AWS-StartInteractiveCommand")
         .arg("--parameters")
         .arg("--profile")
-        .arg(args.profile)
+        .arg(&args.profile)
         .arg(command)
         .spawn()
         .expect("Failed to start ssm session");
