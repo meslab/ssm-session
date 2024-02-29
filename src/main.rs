@@ -23,6 +23,9 @@ struct Args {
     #[clap(short, long, default_value = "eu-central-1")]
     region: String,
 
+    #[clap(short, long, default_value = "default")]
+    profile: String,
+
     #[clap(short, long)]
     exec: Option<String>,
 
@@ -122,6 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let credentials_provider = DefaultCredentialsChain::builder()
         .region(region.clone())
+        .profile_name(&args.profile)
         .build()
         .await;
     let ecs_config = EcsConfig::builder()
@@ -187,6 +191,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg("--document-name")
         .arg("AWS-StartInteractiveCommand")
         .arg("--parameters")
+        .arg("--profile")
+        .arg(args.profile)
         .arg(command)
         .spawn()
         .expect("Failed to start ssm session");
