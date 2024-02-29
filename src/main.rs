@@ -5,11 +5,12 @@ use clap::Parser;
 use log::{debug, info};
 use std::process::Command;
 use tokio;
+mod helpers;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[clap(
-    version = "v0.1.1",
+    version = "v0.1.2",
     author = "Anton Sidorov tonysidrock@gmail.com",
     about = "Counts wwords frequency in a text file"
 )]
@@ -31,88 +32,6 @@ struct Args {
 
     #[clap(short, long)]
     instance: Option<String>,
-}
-
-async fn get_service_arn(
-    ecs_client: &EcsClient,
-    cluster: &String,
-    service: &String,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let mut ecs_services_stream = ecs_client
-        .list_services()
-        .cluster(cluster)
-        .max_results(100)
-        .into_paginator()
-        .send();
-
-    while let Some(services) = ecs_services_stream.next().await {
-        debug!("Services: {:?}", services);
-        let service_arn = services
-            .unwrap()
-            .service_arns
-            .unwrap()
-            .into_iter()
-            .find(|arn| arn.contains(service));
-        if let Some(service_arn) = service_arn {
-            debug!("Inside get_service_arn Service ARN: {:?}", service_arn);
-            return Ok(service_arn);
-        }
-    }
-    Err("Service not found".into())
-}
-
-async fn get_task_arn(
-    ecs_client: &EcsClient,
-    cluster: &String,
-    service: &String,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let list_tasks_result = ecs_client
-        .list_tasks()
-        .cluster(cluster)
-        .service_name(service)
-        .send()
-        .await?;
-    Ok(list_tasks_result.task_arns.unwrap().pop().unwrap())
-}
-
-async fn get_task_container_arn(
-    ecs_client: &EcsClient,
-    cluster: &String,
-    task_arn: &String,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let describe_tasks_result = ecs_client
-        .describe_tasks()
-        .cluster(cluster)
-        .tasks(task_arn)
-        .send()
-        .await?;
-    Ok(describe_tasks_result
-        .tasks
-        .expect("No task found!")
-        .pop()
-        .unwrap()
-        .container_instance_arn
-        .expect("No container instance found!"))
-}
-
-async fn get_container_arn(
-    ecs_client: &EcsClient,
-    cluster: &String,
-    container_instance_arn: &String,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let describe_container_instances_result = ecs_client
-        .describe_container_instances()
-        .cluster(cluster)
-        .container_instances(container_instance_arn)
-        .send()
-        .await?;
-    Ok(describe_container_instances_result
-        .container_instances
-        .expect("No container instance found!")
-        .pop()
-        .unwrap()
-        .ec2_instance_id
-        .expect("No EC2 instance found!"))
 }
 
 #[tokio::main]
@@ -159,19 +78,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             instance_id = instance;
         }
         None => {
-            let service_arn = get_service_arn(&ecs_client, &args.cluster, &args.service).await?;
+            let service_arn =
+                helpers::get_service_arn(&ecs_client, &args.cluster, &args.service).await?;
 
             info!("Service ARN: {}", service_arn);
 
-            let task_arn = get_task_arn(&ecs_client, &args.cluster, &service_arn).await?;
+            let task_arn = helpers::get_task_arn(&ecs_client, &args.cluster, &service_arn).await?;
 
             info!("Task ARN: {}", task_arn);
 
             let task_instance_arn =
-                get_task_container_arn(&ecs_client, &args.cluster, &task_arn).await?;
+                helpers::get_task_container_arn(&ecs_client, &args.cluster, &task_arn).await?;
             info!("Task Instance ARN: {:?}", task_instance_arn);
 
-            instance_id = get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?;
+            instance_id =
+                helpers::get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?;
             info!("Instance ID: {:?}", instance_id);
         }
     }
