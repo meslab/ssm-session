@@ -1,8 +1,26 @@
-use aws_sdk_ecs::Client as EcsClient;
+use aws_config::default_provider::credentials::DefaultCredentialsChain;
+use aws_sdk_ecs::config::Region;
+use aws_sdk_ecs::{Client, Config};
 use log::debug;
 
+pub async fn initialize_client(region: &str, profile: &str) -> Client {
+    let region = Region::new(region.to_owned());
+
+    let credentials_provider = DefaultCredentialsChain::builder()
+        .region(region.clone())
+        .profile_name(profile)
+        .build()
+        .await;
+    let ecs_config = Config::builder()
+        .credentials_provider(credentials_provider)
+        .region(region.clone())
+        .build();
+
+    Client::from_conf(ecs_config)
+}
+
 pub async fn get_service_arn(
-    ecs_client: &EcsClient,
+    ecs_client: &Client,
     cluster: &String,
     service: &String,
 ) -> Result<String, Box<dyn std::error::Error>> {
@@ -30,7 +48,7 @@ pub async fn get_service_arn(
 }
 
 pub async fn get_task_arn(
-    ecs_client: &EcsClient,
+    ecs_client: &Client,
     cluster: &String,
     service: &String,
 ) -> Result<String, Box<dyn std::error::Error>> {
@@ -44,7 +62,7 @@ pub async fn get_task_arn(
 }
 
 pub async fn get_task_container_arn(
-    ecs_client: &EcsClient,
+    ecs_client: &Client,
     cluster: &String,
     task_arn: &String,
 ) -> Result<String, Box<dyn std::error::Error>> {
@@ -64,7 +82,7 @@ pub async fn get_task_container_arn(
 }
 
 pub async fn get_container_arn(
-    ecs_client: &EcsClient,
+    ecs_client: &Client,
     cluster: &String,
     container_instance_arn: &String,
 ) -> Result<String, Box<dyn std::error::Error>> {

@@ -1,10 +1,6 @@
-use aws_config::default_provider::credentials::DefaultCredentialsChain;
-use aws_sdk_ecs::config::Region as EcsRegion;
-use aws_sdk_ecs::{Client as EcsClient, Config as EcsConfig};
 use clap::Parser;
-use log::{debug, info};
+use log::info;
 use std::process::Command;
-use tokio;
 mod helpers;
 
 #[derive(Parser)]
@@ -40,23 +36,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
-    let region = EcsRegion::new(args.region.clone());
-
-    let credentials_provider = DefaultCredentialsChain::builder()
-        .region(region.clone())
-        .profile_name(&args.profile)
-        .build()
-        .await;
-    let ecs_config = EcsConfig::builder()
-        .credentials_provider(credentials_provider)
-        .region(region.clone())
-        .build();
-
-    debug!(
-        "Cluster: {}, Service: {}, Region: {}.",
-        &args.cluster, &args.service, &args.region
-    );
-
     let mut command = format!(
         "command=sudo docker exec -ti $(sudo docker ps -qf name={} | head -n1) /bin/bash",
         &args.service
@@ -69,12 +48,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let ecs_client = EcsClient::from_conf(ecs_config);
+    let ecs_client = helpers::initialize_client(&args.region, &args.profile).await;
     let instance_id;
 
     match args.instance {
         Some(instance) => {
-            command = format!("command=sudo su -");
+            command = "command=sudo su -".to_string();
             instance_id = instance;
         }
         None => {
