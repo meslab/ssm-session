@@ -4,16 +4,13 @@ use aws_sdk_ecs::{Client, Config};
 use log::debug;
 
 pub async fn initialize_client(region: &str, profile: &str) -> Client {
-    let region = Region::new(region.to_owned());
-
     let credentials_provider = DefaultCredentialsChain::builder()
-        .region(region.clone())
         .profile_name(profile)
         .build()
         .await;
     let ecs_config = Config::builder()
         .credentials_provider(credentials_provider)
-        .region(region.clone())
+        .region(Region::new(region.to_string()))
         .build();
 
     Client::from_conf(ecs_config)
