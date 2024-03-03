@@ -1,7 +1,7 @@
 use clap::Parser;
 use log::info;
 use std::process::Command;
-mod helpers;
+mod ecs;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let ecs_client = helpers::initialize_client(&args.region, &args.profile).await;
+    let ecs_client = ecs::initialize_client(&args.region, &args.profile).await;
     let instance_id;
 
     match args.instance {
@@ -58,20 +58,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => {
             let service_arn =
-                helpers::get_service_arn(&ecs_client, &args.cluster, &args.service).await?;
+                ecs::get_service_arn(&ecs_client, &args.cluster, &args.service).await?;
 
             info!("Service ARN: {}", service_arn);
 
-            let task_arn = helpers::get_task_arn(&ecs_client, &args.cluster, &service_arn).await?;
+            let task_arn = ecs::get_task_arn(&ecs_client, &args.cluster, &service_arn).await?;
 
             info!("Task ARN: {}", task_arn);
 
             let task_instance_arn =
-                helpers::get_task_container_arn(&ecs_client, &args.cluster, &task_arn).await?;
+                ecs::get_task_container_arn(&ecs_client, &args.cluster, &task_arn).await?;
             info!("Task Instance ARN: {:?}", task_instance_arn);
 
             instance_id =
-                helpers::get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?;
+                ecs::get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?;
             info!("Instance ID: {:?}", instance_id);
         }
     }
