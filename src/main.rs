@@ -1,12 +1,12 @@
 use clap::Parser;
 use log::info;
+use ssm_session::ecs;
 use std::process::Command;
-mod ecs;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[clap(
-    version = "v0.1.2",
+    version = "v0.1.3",
     author = "Anton Sidorov tonysidrock@gmail.com",
     about = "Counts wwords frequency in a text file"
 )]
