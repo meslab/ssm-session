@@ -49,12 +49,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let ecs_client = ecs::initialize_client(&args.region, &args.profile).await;
-    let instance_id;
-
-    match args.instance {
+    let instance_id = match args.instance {
         Some(instance) => {
             command = "command=sudo su -".to_string();
-            instance_id = instance;
+            instance
         }
         None => {
             let service_arn =
@@ -70,11 +68,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ecs::get_task_container_arn(&ecs_client, &args.cluster, &task_arn).await?;
             info!("Task Instance ARN: {:?}", task_instance_arn);
 
-            instance_id =
-                ecs::get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?;
-            info!("Instance ID: {:?}", instance_id);
+            ecs::get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?
         }
-    }
+    };
+    info!("Instance ID: {:?}", instance_id);
 
     println!(
         "Service {} is running on instance {}",
