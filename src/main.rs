@@ -36,40 +36,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
-    let mut command = format!(
-        "command=sudo docker exec -ti $(sudo docker ps -qf name={} | head -n1) /bin/bash",
-        &args.service
-    );
-
-    if let Some(exec) = args.exec {
-        command = format!(
+    let command = if let Some(exec) = args.exec {
+        format!(
             "command=sudo docker exec -ti $(sudo docker ps -qf name={} | head -n1) /bin/bash -lc {}",
             &args.service, exec
-        );
-    }
+        )
+    } else if args.instance.is_some() {
+        "command=sudo su -".to_string()
+    } else {
+        format!(
+            "command=sudo docker exec -ti $(sudo docker ps -qf name={} | head -n1) /bin/bash",
+            &args.service
+        )
+    };
 
     let ecs_client = ecs::initialize_client(&args.region, &args.profile).await;
-    let instance_id = match args.instance {
-        Some(instance) => {
-            command = "command=sudo su -".to_string();
-            instance
-        }
-        None => {
-            let service_arn =
-                ecs::get_service_arn(&ecs_client, &args.cluster, &args.service).await?;
+    let instance_id = if let Some(instance) = args.instance {
+        instance
+    } else {
+        let service_arn = ecs::get_service_arn(&ecs_client, &args.cluster, &args.service).await?;
+        info!("Service ARN: {}", service_arn);
 
-            info!("Service ARN: {}", service_arn);
+        let task_arn = ecs::get_task_arn(&ecs_client, &args.cluster, &service_arn).await?;
+        info!("Task ARN: {}", task_arn);
 
-            let task_arn = ecs::get_task_arn(&ecs_client, &args.cluster, &service_arn).await?;
+        let task_instance_arn =
+            ecs::get_task_container_arn(&ecs_client, &args.cluster, &task_arn).await?;
+        info!("Task Instance ARN: {:?}", task_instance_arn);
 
-            info!("Task ARN: {}", task_arn);
-
-            let task_instance_arn =
-                ecs::get_task_container_arn(&ecs_client, &args.cluster, &task_arn).await?;
-            info!("Task Instance ARN: {:?}", task_instance_arn);
-
-            ecs::get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?
-        }
+        ecs::get_container_arn(&ecs_client, &args.cluster, &task_instance_arn).await?
     };
     info!("Instance ID: {:?}", instance_id);
 
