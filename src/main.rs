@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &args.service, instance_id
     );
 
-    let mut ssm_session = Command::new("aws")
+    let _session = Command::new("aws")
         .arg("ssm")
         .arg("start-session")
         .arg("--region")
@@ -87,9 +87,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(&args.profile)
         .arg(command)
         .spawn()
+        .expect("Failed to start ssm session")
+        .wait()
         .expect("Failed to start ssm session");
-
-    let _ = ssm_session.wait().expect("Failed to wait for ssm session");
-
     Ok(())
 }
