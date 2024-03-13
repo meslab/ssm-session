@@ -26,7 +26,7 @@ struct Args {
     #[clap(short, long)]
     exec: Option<String>,
 
-    #[clap(short, long)]
+    #[clap(short, long, default_value = None)]
     instance: Option<String>,
 }
 
