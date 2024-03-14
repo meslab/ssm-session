@@ -17,7 +17,12 @@ test:
 run:
 	cargo run -r
 
+build:
+	cargo update
+	cargo build 
+	
 release:
+	cargo update
 	cargo build -r
 	strip target/release/ssm-session
 
