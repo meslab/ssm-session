@@ -6,7 +6,7 @@ use std::process::Command;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[clap(
-    version = "v0.1.3",
+    version = "v0.1.4",
     author = "Anton Sidorov tonysidrock@gmail.com",
     about = "Counts wwords frequency in a text file"
 )]
