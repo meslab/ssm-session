@@ -29,7 +29,7 @@ struct Args {
     #[clap(short, long, default_value = None)]
     instance: Option<String>,
 
-    #[clap(short='d', long)]
+    #[clap(short='I', long)]
     host: bool,
 }
 
