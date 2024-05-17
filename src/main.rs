@@ -6,7 +6,7 @@ use std::process::Command;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[clap(
-    version = "v0.1.4",
+    version = "v0.1.5",
     author = "Anton Sidorov tonysidrock@gmail.com",
     about = "Counts wwords frequency in a text file"
 )]
@@ -28,6 +28,9 @@ struct Args {
 
     #[clap(short, long, default_value = None)]
     instance: Option<String>,
+
+    #[clap(short, long)]
+    host: bool,
 }
 
 #[tokio::main]
@@ -41,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "command=sudo docker exec -ti $(sudo docker ps -qf name={} | head -n1) /bin/bash -lc {}",
             &args.service, exec
         )
-    } else if args.instance.is_some() {
+    } else if args.instance.is_some() || args.host {
         "command=sudo su -".to_string()
     } else {
         format!(
