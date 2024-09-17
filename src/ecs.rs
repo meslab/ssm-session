@@ -57,12 +57,12 @@ pub async fn get_task_arn(
         .into_paginator()
         .send();
     while let Some(tasks) = ecs_tasks_stream.next().await {
+        debug!("Tasks: {:?}", tasks);
         let task_arn = tasks
         .unwrap()
         .task_arns
-        .unwrap()
-        .into_iter()
-        .find(|arn| arn.contains(service));
+        .unwrap_or_default()
+        .pop();
         if let Some(task_arn) = task_arn {
             return Ok(task_arn)
         }
