@@ -49,17 +49,25 @@ pub async fn get_task_arn(
     cluster: &str,
     service: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let list_tasks_result = ecs_client
+    let mut ecs_tasks_stream = ecs_client
         .list_tasks()
         .cluster(cluster)
+        .max_results(100)
         .service_name(service)
-        .send()
-        .await?;
-    list_tasks_result
+        .into_paginator()
+        .send();
+    while let Some(tasks) = ecs_tasks_stream.next().await {
+        let task_arn = tasks
+        .unwrap()
         .task_arns
-        .unwrap_or_default()
-        .pop()
-        .ok_or("No task found!".into())
+        .unwrap()
+        .into_iter()
+        .find(|arn| arn.contains(service));
+        if let Some(task_arn) = task_arn {
+            return Ok(task_arn)
+        }
+     }
+    Err("Task not found".into())
 }
 
 pub async fn get_task_container_arn(
